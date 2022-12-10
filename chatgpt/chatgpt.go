@@ -61,14 +61,15 @@ func newChatGPT() *ChatGPT {
 	// 每 10 分钟更新一次 sessionToken
 	go func() {
 		for range time.Tick(10 * time.Minute) {
-			gpt.updateSessionToken()
+			if !gpt.updateSessionToken() {
+				gpt.ok = false
+			}
 		}
 	}()
 	return gpt
 }
 
 func (c *ChatGPT) updateSessionToken() bool {
-	c.ok = false
 	session, err := http.NewRequest("GET", "https://chat.openai.com/api/auth/session", nil)
 	if err != nil {
 		log.Println("更新 Token 调用 NewRequest 失败:", err)
@@ -112,7 +113,8 @@ func (c *ChatGPT) updateSessionToken() bool {
 
 func (c *ChatGPT) SendMsg(msg, openId string) string {
 	if !c.ok {
-		return "ChatGPT 没有初始化成功"
+		log.Println("请处理 ChatGPT 的 sessionToken 更新失败")
+		return "服务器异常, 请联系管理员"
 	}
 
 	lock.Lock()
