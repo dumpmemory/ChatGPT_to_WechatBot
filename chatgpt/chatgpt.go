@@ -94,10 +94,6 @@ func newChatGPT() *ChatGPT {
 		log.Println("读取", User_AgentFileName, "文件失败:", err)
 		exit()
 	}
-	if len(cookies) < 100 {
-		log.Println("你应该忘了配置", User_AgentFileName, "文件")
-		exit()
-	}
 
 	User_Agent := string(User_AgentBytes)
 	User_Agent = strings.TrimSpace(User_Agent)
