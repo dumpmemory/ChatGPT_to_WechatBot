@@ -7,10 +7,18 @@
 ChatGPT的接口参考了[wechat-chatGPT](https://github.com/gtoxlili/wechat-chatGPT)
 
 # 使用方法
-## sessionToken
-打开浏览器并进入 ChatGPT 页面, 在请求中复制 cookie 中 __Secure-next-auth.session-token 的值 到 sessionToken 文件
+## cookie
+打开浏览器并进入 ChatGPT 页面, 在请求中复制整个 cookie 到 cookie 文件
 
-![GetSessionToken](https://github.com/lihongbin99/ChatGPT_to_WechatBot/blob/master/static/token.png?raw=true)
+![GetSessionToken](https://github.com/lihongbin99/ChatGPT_to_WechatBot/blob/master/static/cookie.png?raw=true)
+
+打开浏览器并进入 ChatGPT 页面, 在请求中复制整个 User-Agent 到 User_Agent 文件
+
+![GetSessionToken](https://github.com/lihongbin99/ChatGPT_to_WechatBot/blob/master/static/User_Agent.png?raw=true)
+
+# 注意事项
+- 每隔2小时就需要手动更新一下 cookie
+- 在浏览器进入 ChatGPT 获取 cookie 时使用的 ip 必须跟项目启动时的 ip 一致
 
 # 编译
 ```

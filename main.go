@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/eatmoreapple/openwechat"
 	"log"
+	"os"
 	"strings"
 )
 
@@ -32,7 +33,8 @@ func startBot() {
 		}
 	}
 	// 阻塞主goroutine, 直到发生异常或者用户主动退出
-	bot.Block()
+	_ = bot.Block()
+	exit()
 }
 
 // HandlerMessage 处理消息
@@ -88,6 +90,7 @@ func groupMessage(msg *openwechat.Message) {
 
 // privateMessage 处理私聊消息
 func privateMessage(msg *openwechat.Message) {
+
 	sender, err := msg.Sender()
 	if err != nil {
 		fmt.Println("私聊消息中获取 Sender 失败:", err)
@@ -107,4 +110,10 @@ func privateMessage(msg *openwechat.Message) {
 		log.Println("发送私聊消息失败:", err)
 	}
 	return
+}
+
+func exit() {
+	log.Println("请输入任意字符退出程序")
+	_, _ = os.Stdin.Read([]byte{0})
+	os.Exit(0)
 }

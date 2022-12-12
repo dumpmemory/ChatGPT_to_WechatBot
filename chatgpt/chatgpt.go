@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unsafe"
 )
 
 func GetChatGptMessage(requestText string, openId string) string {
@@ -24,15 +23,22 @@ func GetChatGptMessage(requestText string, openId string) string {
 }
 
 var (
-	DefaultGPT  = newChatGPT()
-	userInfoMap = make(map[string]*userInfo)
-	lock        = sync.Mutex{}
+	cookiesFileName    = "cookie"
+	User_AgentFileName = "User_Agent"
+	SessionTokenName   = "__Secure-next-auth.session-token"
+	CfClearanceName    = "cf_clearance"
+	DefaultGPT         = newChatGPT()
+	userInfoMap        = make(map[string]*userInfo)
+	lock               = sync.Mutex{}
 )
 
 type ChatGPT struct {
 	ok            bool
 	authorization string
 	sessionToken  string
+	cf_clearance  string
+	User_Agent    string
+	timeOut       time.Time
 }
 
 type userInfo struct {
@@ -42,17 +48,73 @@ type userInfo struct {
 }
 
 func newChatGPT() *ChatGPT {
-	sessionToken, err := os.ReadFile("sessionToken")
+	cookies, err := os.ReadFile(cookiesFileName)
 	if err != nil {
-		log.Println("读取 sessionToken 文件失败:", err)
+		log.Println("读取", cookiesFileName, "文件失败:", err)
 		exit()
 	}
-	if len(sessionToken) < 100 {
-		log.Println("你应该忘了配置 sessionToken")
+	if len(cookies) < 100 {
+		log.Println("你应该忘了配置", cookiesFileName, "文件")
 		exit()
 	}
+
+	// 解析一下 sessionToken
+	sessionToken := string(cookies)
+	startIndex := strings.Index(sessionToken, SessionTokenName+"=")
+	if startIndex != -1 {
+		endIndex := strings.Index(sessionToken[startIndex:], ";")
+		if endIndex != -1 {
+			sessionToken = sessionToken[startIndex+len(SessionTokenName)+1 : startIndex+endIndex]
+		} else {
+			sessionToken = sessionToken[startIndex+len(SessionTokenName)+1:]
+		}
+	} else {
+		log.Println("在 cookies 中没有查询到", SessionTokenName)
+		exit()
+	}
+
+	// 解析一下 cf_clearance
+	cf_clearance := string(cookies)
+	startIndex = strings.Index(cf_clearance, CfClearanceName+"=")
+	if startIndex != -1 {
+		endIndex := strings.Index(cf_clearance[startIndex:], ";")
+		if endIndex != -1 {
+			cf_clearance = cf_clearance[startIndex+len(CfClearanceName)+1 : startIndex+endIndex]
+		} else {
+			cf_clearance = cf_clearance[startIndex+len(CfClearanceName)+1:]
+		}
+	} else {
+		log.Println("在 cookies 中没有查询到", CfClearanceName)
+		exit()
+	}
+
+	// 获取一下 User-Agent
+	User_AgentBytes, err := os.ReadFile(User_AgentFileName)
+	if err != nil {
+		log.Println("读取", User_AgentFileName, "文件失败:", err)
+		exit()
+	}
+	if len(cookies) < 100 {
+		log.Println("你应该忘了配置", User_AgentFileName, "文件")
+		exit()
+	}
+
+	User_Agent := string(User_AgentBytes)
+	User_Agent = strings.TrimSpace(User_Agent)
+	if strings.HasPrefix(User_Agent, "user-agent: ") {
+		User_Agent = User_Agent[12:]
+	}
+	if len(User_Agent) == 0 {
+		log.Println("你应该忘了配置", User_AgentFileName, "文件")
+		exit()
+	}
+	log.Println("User_Agent:", User_Agent)
+
 	gpt := &ChatGPT{
-		sessionToken: *(*string)(unsafe.Pointer(&sessionToken)),
+		sessionToken: sessionToken,
+		cf_clearance: cf_clearance,
+		User_Agent:   User_Agent,
+		timeOut:      time.Now().Add(2 * time.Hour),
 	}
 	if !gpt.updateSessionToken() {
 		exit()
@@ -70,20 +132,30 @@ func newChatGPT() *ChatGPT {
 }
 
 func (c *ChatGPT) updateSessionToken() bool {
+	if c.timeOut.Before(time.Now()) {
+		log.Println(CfClearanceName, "已失效, 请重新配置")
+		return false
+	}
+
 	session, err := http.NewRequest("GET", "https://chat.openai.com/api/auth/session", nil)
 	if err != nil {
 		log.Println("更新 Token 调用 NewRequest 失败:", err)
 		return false
 	}
+	session.Header.Set("User-Agent", c.User_Agent)
 	session.AddCookie(&http.Cookie{
-		Name:  "__Secure-next-auth.session-token",
+		Name:  SessionTokenName,
 		Value: c.sessionToken,
 	})
 	session.AddCookie(&http.Cookie{
-		Name:  "__Secure-next-auth.callback-url",
-		Value: "https://chat.openai.com/",
+		Name:  CfClearanceName,
+		Value: c.cf_clearance,
 	})
-	session.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15")
+	session.AddCookie(&http.Cookie{
+		Name:  "__Secure-next-auth.callback-url",
+		Value: "https://chat.openai.com",
+	})
+
 	resp, err := http.DefaultClient.Do(session)
 	if err != nil {
 		log.Println("更新 Token 调用接口失败:", err)
@@ -93,16 +165,23 @@ func (c *ChatGPT) updateSessionToken() bool {
 		_ = resp.Body.Close()
 	}()
 	for _, cookie := range resp.Cookies() {
-		if cookie.Name == "__Secure-next-auth.session-token" {
+		if cookie.Name == SessionTokenName {
 			c.sessionToken = cookie.Value
-			_ = os.WriteFile("sessionToken", []byte(cookie.Value), 0600)
+			newCookie := SessionTokenName + "=" + cookie.Value + ";" + CfClearanceName + "=" + c.cf_clearance
+			_ = os.WriteFile(cookiesFileName, []byte(newCookie), 0600)
 			break
 		}
 	}
 	var accessToken map[string]interface{}
-	err = json.NewDecoder(resp.Body).Decode(&accessToken)
+	bodyByes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("更新 Token 解析响应数据失败:", err)
+		log.Println("更新 Token 获取响应数据失败:", err)
+		return false
+	}
+	err = json.Unmarshal(bodyByes, &accessToken)
+	if err != nil {
+		log.Println("更新 Token 解析响应数据失败(可能是需要更新", CfClearanceName, "):", err)
+		//log.Println("解析响应数据:", string(bodyByes))
 		return false
 	}
 	c.authorization = accessToken["accessToken"].(string)
@@ -141,13 +220,27 @@ func (c *ChatGPT) SendMsg(msg, openId string) string {
 	}
 	req.Header.Set("Host", "chat.openai.com")
 	req.Header.Set("Authorization", "Bearer "+c.authorization)
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Openai-Assistant-App-Id", "")
 	req.Header.Set("Connection", "close")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("origin", "https://chat.openai.com")
 	req.Header.Set("Referer", "https://chat.openai.com/chat")
+
+	req.Header.Set("User-Agent", c.User_Agent)
+	req.AddCookie(&http.Cookie{
+		Name:  SessionTokenName,
+		Value: c.sessionToken,
+	})
+	req.AddCookie(&http.Cookie{
+		Name:  CfClearanceName,
+		Value: c.cf_clearance,
+	})
+	req.AddCookie(&http.Cookie{
+		Name:  "__Secure-next-auth.callback-url",
+		Value: "https://chat.openai.com",
+	})
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
