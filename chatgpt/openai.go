@@ -50,7 +50,10 @@ func GetOpenAiMessage(requestText string) string {
 		FrequencyPenalty: 0,
 		PresencePenalty:  0,
 	}
-	requestData, _ := json.Marshal(requestBody)
+	requestData, err := json.Marshal(requestBody)
+	if err != nil {
+		return "问题消息格式异常"
+	}
 
 	req, err := http.NewRequest("POST", "https://api.openai.com/v1/completions", bytes.NewBuffer(requestData))
 	if err != nil {
@@ -85,8 +88,7 @@ func GetOpenAiMessage(requestText string) string {
 	}
 
 	gptResponseBody := &OpenAiResponseBody{}
-	err = json.Unmarshal(body, gptResponseBody)
-	if err != nil {
+	if err = json.Unmarshal(body, gptResponseBody); err != nil {
 		log.Println("GetOpenAiMessage 解析响应体异常:", err)
 		log.Println(string(body))
 		return "服务器异常, 请稍后再试"

@@ -51,7 +51,10 @@ func CompletionsImage(msg string, downPath string) (string, error) {
 		N:      1,
 		Size:   "1024x1024",
 	}
-	requestData, _ := json.Marshal(requestBody)
+	requestData, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", errors.New("问题格式异常")
+	}
 
 	req, err := http.NewRequest("POST", "https://api.openai.com/v1/images/generations", bytes.NewBuffer(requestData))
 	if err != nil {
@@ -82,7 +85,10 @@ func CompletionsImage(msg string, downPath string) (string, error) {
 	}
 
 	gptResponseBody := &ImageResponseBody{}
-	_ = json.Unmarshal(body, gptResponseBody)
+	if err = json.Unmarshal(body, gptResponseBody); err != nil {
+		log.Println(string(body))
+		return "", errors.New(fmt.Sprintf("ImageResponseBody 解析响应体异常:%v", err))
+	}
 
 	imageName := uuid.New().String() + ".jpg"
 	imagePath := downPath + "/" + imageName

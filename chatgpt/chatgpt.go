@@ -24,7 +24,6 @@ var (
 	DefaultGPTLock              = sync.Mutex{}
 	DefaultGPTSuccess1          = false // 用来判断是否成功过
 	userInfoMap                 = make(map[string]*userInfo)
-	lock                        = sync.Mutex{}
 )
 
 type ChatGPT struct {
@@ -34,6 +33,7 @@ type ChatGPT struct {
 	cf_clearance  string
 	User_Agent    string
 	timeOut       time.Time
+	lock          sync.Mutex
 }
 
 type userInfo struct {
@@ -71,15 +71,23 @@ func GetChatGptMessage(requestText string, openId string) string {
 	return chatGptMessage
 }
 
-func newChatGPT() *ChatGPT {
+func newChatGPT() (gpt *ChatGPT) {
+	gpt = &ChatGPT{
+		sessionToken: "",
+		cf_clearance: "",
+		User_Agent:   "",
+		timeOut:      time.Now().Add(2 * time.Hour),
+		lock:         sync.Mutex{},
+	}
+
 	cookies, err := os.ReadFile(cookiesFileName)
 	if err != nil {
 		log.Println("读取", cookiesFileName, "文件失败:", err)
-		return nil
+		return
 	}
 	if len(cookies) < 100 {
 		log.Println("你应该忘了配置", cookiesFileName, "文件")
-		return nil
+		return
 	}
 
 	// 解析一下 sessionToken
@@ -94,7 +102,7 @@ func newChatGPT() *ChatGPT {
 		}
 	} else {
 		log.Println("在 cookies 中没有查询到", SessionTokenName)
-		return nil
+		return
 	}
 
 	// 解析一下 cf_clearance
@@ -110,14 +118,14 @@ func newChatGPT() *ChatGPT {
 		}
 	} else {
 		log.Println("在 cookies 中没有查询到", CfClearanceName)
-		return nil
+		return
 	}
 
 	// 获取一下 User-Agent
 	User_AgentBytes, err := os.ReadFile(User_AgentFileName)
 	if err != nil {
 		log.Println("读取", User_AgentFileName, "文件失败:", err)
-		return nil
+		return
 	}
 
 	User_Agent := string(User_AgentBytes)
@@ -127,18 +135,16 @@ func newChatGPT() *ChatGPT {
 	}
 	if len(User_Agent) == 0 {
 		log.Println("你应该忘了配置", User_AgentFileName, "文件")
-		return nil
+		return
 	}
 	log.Println("User_Agent:", User_Agent)
 
-	gpt := &ChatGPT{
-		sessionToken: sessionToken,
-		cf_clearance: cf_clearance,
-		User_Agent:   User_Agent,
-		timeOut:      time.Now().Add(2 * time.Hour),
-	}
+	gpt.sessionToken = sessionToken
+	gpt.cf_clearance = cf_clearance
+	gpt.User_Agent = User_Agent
+
 	if !gpt.updateSessionToken() {
-		return nil
+		return
 	}
 
 	// 每 10 分钟更新一次 sessionToken
@@ -149,7 +155,7 @@ func newChatGPT() *ChatGPT {
 			}
 		}
 	}()
-	return gpt
+	return
 }
 
 func (c *ChatGPT) updateSessionToken() bool {
@@ -199,8 +205,7 @@ func (c *ChatGPT) updateSessionToken() bool {
 		log.Println("更新 Token 获取响应数据失败:", err)
 		return false
 	}
-	err = json.Unmarshal(bodyByes, &accessToken)
-	if err != nil {
+	if err = json.Unmarshal(bodyByes, &accessToken); err != nil {
 		log.Println("更新 Token 解析响应数据失败", err)
 		if !DefaultGPTSuccess1 {
 			DefaultGPTSuccess1 = true
@@ -224,8 +229,8 @@ func (c *ChatGPT) SendMsg(msg, openId string) string {
 		return "服务器异常, 请联系管理员"
 	}
 
-	lock.Lock()
-	defer lock.Unlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
 
 	info, ok := userInfoMap[openId]
 	if !ok || info.ttl.Before(time.Now()) {
