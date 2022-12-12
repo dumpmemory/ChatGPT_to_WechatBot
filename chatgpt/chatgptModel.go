@@ -6,41 +6,38 @@ import (
 	"github.com/google/uuid"
 )
 
-type ChatReq struct {
-	Action          string           `json:"action"`
-	Messages        []ChatReqMessage `json:"messages"`
-	ConversationId  interface{}      `json:"conversation_id"`
-	ParentMessageId string           `json:"parent_message_id"`
-	Model           string           `json:"model"`
+type ChatRequestBody struct {
+	Action          string               `json:"action"`
+	Messages        []ChatRequestMessage `json:"messages"`
+	ConversationId  interface{}          `json:"conversation_id"`
+	ParentMessageId string               `json:"parent_message_id"`
+	Model           string               `json:"model"`
 }
 
-type ChatReqMessage struct {
-	Id      string            `json:"id"`
-	Role    string            `json:"role"`
-	Content ChatReqMsgContent `json:"content"`
+type ChatRequestMessage struct {
+	Id      string             `json:"id"`
+	Role    string             `json:"role"`
+	Content ChatRequestContent `json:"content"`
 }
 
-type ChatReqMsgContent struct {
+type ChatRequestContent struct {
 	ContentType string   `json:"content_type"`
 	Parts       []string `json:"parts"`
 }
 
-func (msg *ChatReq) ToJson() []byte {
-	body, err := json.Marshal(msg)
-	if err != nil {
-		panic(err)
-	}
+func (msg *ChatRequestBody) ToJson() []byte {
+	body, _ := json.Marshal(msg)
 	return body
 }
 
-func CreateChatReqBody(message, parentID string, conversationId interface{}) *bytes.Buffer {
-	req := &ChatReq{
+func CreateChatGPTRequestBody(message, parentID string, conversationId interface{}) *bytes.Buffer {
+	req := &ChatRequestBody{
 		Action: "next",
-		Messages: []ChatReqMessage{
+		Messages: []ChatRequestMessage{
 			{
 				Id:   uuid.New().String(),
 				Role: "user",
-				Content: ChatReqMsgContent{
+				Content: ChatRequestContent{
 					ContentType: "text",
 					Parts:       []string{message},
 				},
@@ -53,25 +50,24 @@ func CreateChatReqBody(message, parentID string, conversationId interface{}) *by
 	return bytes.NewBuffer(req.ToJson())
 }
 
-type ChatRes struct {
-	Message        ChatResMessage `json:"message"`
-	ConversationId string         `json:"conversation_id"`
+/**********************************************************************************************************************/
+
+type ChatGPTResponseBody struct {
+	Message        ChatGPTResponseMessage `json:"message"`
+	ConversationId string                 `json:"conversation_id"`
 }
 
-type ChatResMessage struct {
-	Id      string            `json:"id"`
-	Content ChatResMsgContent `json:"content"`
+type ChatGPTResponseMessage struct {
+	Id      string                 `json:"id"`
+	Content ChatGPTResponseContent `json:"content"`
 }
 
-type ChatResMsgContent struct {
+type ChatGPTResponseContent struct {
 	Parts []string `json:"parts"`
 }
 
-func ToChatRes(body []byte) *ChatRes {
-	var msg ChatRes
-	err := json.Unmarshal(body, &msg)
-	if err != nil {
-		panic(err)
-	}
+func ToChatRes(body []byte) *ChatGPTResponseBody {
+	var msg ChatGPTResponseBody
+	_ = json.Unmarshal(body, &msg)
 	return &msg
 }

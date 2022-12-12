@@ -237,7 +237,7 @@ func (c *ChatGPT) SendMsg(msg, openId string) string {
 	info.ttl = time.Now().Add(5 * time.Minute)
 
 	// 发送请求
-	req, err := http.NewRequest("POST", "https://chat.openai.com/backend-api/conversation", CreateChatReqBody(msg, info.parentID, info.conversationId))
+	req, err := http.NewRequest("POST", "https://chat.openai.com/backend-api/conversation", CreateChatGPTRequestBody(msg, info.parentID, info.conversationId))
 	if err != nil {
 		log.Println("调用 ChatGPT 的 NewRequestWithContext 异常:", err)
 		return "服务器异常, 请稍后再试"
