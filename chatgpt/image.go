@@ -28,6 +28,11 @@ type ImageURLItem struct {
 }
 
 func GetDALLImage(requestText string, downLoadPath string) string {
+	if len(config.Config.ApiKey) < 20 {
+		log.Println("请配置api_key")
+		return "服务器异常, 请稍后再试"
+	}
+
 	log.Println("向 Image 发送:", requestText)
 
 	imagePath, err := CompletionsImage(requestText, downLoadPath)

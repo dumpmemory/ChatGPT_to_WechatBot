@@ -1,5 +1,5 @@
 {
-  "api_key": "OpenAi的api_key",
+  "api_key": "<openai_api_key>",
   "master": "微信用户名",
   "judge_chatgpt": true
 }

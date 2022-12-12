@@ -36,6 +36,11 @@ type ChoiceItem struct {
 }
 
 func GetOpenAiMessage(requestText string) string {
+	if len(config.Config.ApiKey) < 20 {
+		log.Println("请配置api_key")
+		return "服务器异常, 请稍后再试"
+	}
+
 	requestBody := OpenAiRequestBody{
 		Model:            "text-davinci-003",
 		Prompt:           requestText,
