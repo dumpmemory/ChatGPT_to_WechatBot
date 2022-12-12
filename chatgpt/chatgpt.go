@@ -96,7 +96,6 @@ var (
 	SessionTokenName            = "__Secure-next-auth.session-token"
 	CfClearanceName             = "cf_clearance"
 	DownLoadPath                = "images"
-	Flag                        = "openai"
 	DefaultGPT         *ChatGPT = nil
 	userInfoMap                 = make(map[string]*userInfo)
 	lock                        = sync.Mutex{}

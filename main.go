@@ -3,12 +3,10 @@ package main
 import (
 	"ChatGPT_to_WechatBot/chatgpt"
 	"ChatGPT_to_WechatBot/config"
-	"fmt"
 	"github.com/eatmoreapple/openwechat"
 	"log"
 	"os"
 	"strings"
-	"time"
 )
 
 func main() {
@@ -16,9 +14,13 @@ func main() {
 }
 
 const (
-	DAVINCI = "davinci"
-	IMAGE   = "image"
-	OPENAI  = "openai"
+	ChatGPT = "chatGPT"
+	OpenAi  = "openai"
+	Image   = "image"
+)
+
+var (
+	Model = ChatGPT
 )
 
 // startBot 登录微信
@@ -66,7 +68,7 @@ func groupMessage(msg *openwechat.Message) {
 
 	sender, err := msg.Sender()
 	if err != nil {
-		fmt.Println("群组消息中获取 Sender 失败:", err)
+		log.Println("群组消息中获取 Sender 失败:", err)
 		return
 	}
 
@@ -83,89 +85,68 @@ func groupMessage(msg *openwechat.Message) {
 	if replaceMessage == "" {
 		return
 	}
-	// 获取@我的用户
-	groupSender, _ = msg.SenderInGroup()
+
 	// 判断模型切换
-	reply := ""
-	switch {
-	case strings.Contains(replaceMessage, "达芬奇") && groupSender.NickName == config.Config.Master:
-		chatgpt.Flag = DAVINCI
-		reply = "切换成功，当前模型为 davinci，我可以获取当下的讯息。\n"
-		log.Println("切换成功，当前模型为 davinci")
-		err = replayUserText(msg, reply)
-		if err != nil {
-			log.Printf("回复用户失败，%s", err)
-		}
-	case strings.Contains(replaceMessage, "openai") && groupSender.NickName == config.Config.Master:
-		chatgpt.Flag = OPENAI
-		reply = "切换成功，当前模型为 chatGPT，我们可以使用对话的方式进行交互。\n"
-		log.Println("切换成功，当前模型为 chatGPT")
-		// 回复@我的用户
-		err = replayUserText(msg, reply)
-		if err != nil {
-			log.Printf("回复用户失败，%s", err)
-		}
-	case strings.Contains(replaceMessage, "生成图像") && groupSender.NickName == config.Config.Master:
-		chatgpt.Flag = IMAGE
-		reply = "切换成功，当前模型为 DALL-E，我是一个可以通过文本描述中生成图像的人工智能程序。\n"
-		log.Println("切换成功，当前模型为 DALL-E")
-		err = replayUserText(msg, reply)
-		if err != nil {
-			log.Printf("回复用户失败，%s", err)
-		}
-	case replaceMessage == "查看模型":
-		reply = "模型1：chatGPT，可以使用对话的方式进行交互。\n模型2：DAVINCI，可以使用对话的方式进行交互。\n模型3：DALL-E，可以通过文本描述中生成图像。\n"
-		err = replayUserText(msg, reply)
-		if err != nil {
-			log.Printf("回复用户失败，%s", err)
-		}
-	case replaceMessage == "当前模型":
-		switch {
-		case chatgpt.Flag == OPENAI:
-			reply = "当前模型为 chatGPT"
-			log.Println("查询模型，当前模型为 chatGPT")
-			err = replayUserText(msg, reply)
-			if err != nil {
+	if groupSender.NickName == config.Config.Master {
+		lowerMessage := strings.ToLower(replaceMessage)
+		if strings.Contains(lowerMessage, "chatgpt") {
+			Model = ChatGPT
+			if err = replayUserText(msg, "\"切换成功，当前模型为 ChatGPT，我们可以使用对话的方式进行交互。\\n\""); err != nil {
 				log.Printf("回复用户失败，%s", err)
 			}
-		case chatgpt.Flag == IMAGE:
-			reply = "当前模型为 DALL-E"
-			log.Println("查询模型，当前模型为 chatGPT")
-			err = replayUserText(msg, reply)
-			if err != nil {
+			return
+		} else if strings.Contains(lowerMessage, "openai") {
+			Model = OpenAi
+			if err = replayUserText(msg, "切换成功，当前模型为 OpenAi，我可以获取当下的讯息。\n"); err != nil {
 				log.Printf("回复用户失败，%s", err)
 			}
-		case chatgpt.Flag == DAVINCI:
-			reply = "当前模型为 davinci"
-			log.Println("查询模型，当前模型为 davinci")
-			err = replayUserText(msg, reply)
-			if err != nil {
+			return
+		} else if strings.Contains(replaceMessage, "生成图像") {
+			Model = Image
+			if err = replayUserText(msg, "切换成功，当前模型为 Image，我是一个可以通过文本描述中生成图像的人工智能程序。\n"); err != nil {
 				log.Printf("回复用户失败，%s", err)
 			}
+			return
 		}
 	}
+
+	if replaceMessage == "当前模型" {
+		if err = replayUserText(msg, "当前模型为"+Model); err != nil {
+			log.Printf("回复用户失败，%s", err)
+		}
+		return
+	}
+
+	if replaceMessage == "查看模型" {
+		reply := "模型1: ChatGPT, 我们可以使用对话的方式进行交互.\n" +
+			"模型2: OpenAi, 我可以获取当下的讯息,\n" +
+			"模型3: Image,我是一个可以通过文本描述中生成图像的人工智能程序.\n"
+		if err = replayUserText(msg, reply); err != nil {
+			log.Printf("回复用户失败，%s", err)
+		}
+		return
+	}
+
 	// 发送逻辑
-	switch {
-	case chatgpt.Flag == OPENAI:
-		reply = chatgpt.GetChatGptMessage(replaceMessage, msg.FromUserName+":"+groupSender.NickName)
-		err = replayUserText(msg, reply)
-		if err != nil {
-			log.Printf("OPENAI 回复用户失败: %s \n", err)
+
+	if Model == ChatGPT {
+		reply := chatgpt.GetChatGptMessage(replaceMessage, msg.FromUserName+":"+groupSender.NickName)
+		if err = replayUserText(msg, reply); err != nil {
+			log.Printf("ChatGPT 回复用户失败: %s \n", err)
 		}
-	case chatgpt.Flag == IMAGE:
-		reply = chatgpt.GetDALLImage(replaceMessage, chatgpt.DownLoadPath)
+	} else if Model == OpenAi {
+		reply := chatgpt.GetDavinciMessage(replaceMessage)
+		if err = replayUserText(msg, reply); err != nil {
+			log.Printf("OpenAi 回复用户失败: %v \n", err)
+		}
+	} else if Model == Image {
+		reply := chatgpt.GetDALLImage(replaceMessage, chatgpt.DownLoadPath)
 		log.Printf("微信读取文件路径：%s", reply)
-		err := replayUserImage(msg, reply)
-		if err != nil {
-			log.Printf("回复图片异常，error %s", err)
-		}
-	case chatgpt.Flag == DAVINCI:
-		reply = chatgpt.GetDavinciMessage(replaceMessage)
-		err := replayUserText(msg, reply)
-		if err != nil {
-			log.Printf("DAVINCI response group error: %v \n", err)
+		if err = replayUserImage(msg, reply); err != nil {
+			log.Printf("Image 回复用户失败: %s \n", err)
 		}
 	}
+
 }
 
 // privateMessage 处理私聊消息
@@ -173,7 +154,7 @@ func privateMessage(msg *openwechat.Message) {
 
 	sender, err := msg.Sender()
 	if err != nil {
-		fmt.Println("私聊消息中获取 Sender 失败:", err)
+		log.Println("私聊消息中获取 Sender 失败:", err)
 		return
 	}
 	log.Println("用户:", sender.NickName, "发送了:", msg.Content)
@@ -206,20 +187,13 @@ func replayUserText(msg *openwechat.Message, reply string) error {
 	atText := "@" + groupSender.NickName
 	replyText := atText + "chatGPT回复：\n" + reply
 	_, err := msg.ReplyText(replyText)
-	if err != nil {
-		log.Printf("发送群消息失败: %v \n", err)
-	}
 	return err
 }
 
 // replayUserImage 回复用户图片
 func replayUserImage(msg *openwechat.Message, imagePath string) error {
 	file, _ := os.Open(imagePath)
-	fmt.Println("回复图片读取的路径为", imagePath)
-	time.Sleep(time.Second * 1)
+	log.Println("回复图片读取的路径为", imagePath)
 	_, err := msg.ReplyImage(file)
-	if err != nil {
-		log.Printf("response group error: %v \n", err)
-	}
 	return err
 }
