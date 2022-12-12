@@ -3,23 +3,22 @@ package chatgpt
 import (
 	"ChatGPT_to_WechatBot/config"
 	"bytes"
-	"crypto/md5"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"time"
 )
 
-type ChatGPTRequestImageBody struct {
+type ImageRequestBody struct {
 	Prompt string `json:"prompt"`
 	N      int    `json:"n"`
 	Size   string `json:"size"`
 }
 
-type ChatGPTResponseImageBody struct {
+type ImageResponseBody struct {
 	Data    []ImageURLItem `json:"data"`
 	Created int            `json:"created"`
 }
@@ -29,100 +28,91 @@ type ImageURLItem struct {
 }
 
 func GetDALLImage(requestText string, downLoadPath string) string {
-	fmt.Println("向 DALL-E 发送:", requestText)
+	fmt.Println("向 Image 发送:", requestText)
+
 	imagePath, err := CompletionsImage(requestText, downLoadPath)
 	if err != nil {
-		log.Printf("下载图片失败 %s", err)
+		log.Printf("下载图片失败 %s\n", err)
 		return "下载图片失败"
 	}
-	log.Printf("微信读取文件路径：%s", imagePath)
+
+	log.Printf("返回图片的地址是: %s", imagePath)
 	return imagePath
 }
 
 func CompletionsImage(msg string, downPath string) (string, error) {
-	CompletionsPngURL := "https://api.openai.com/v1/images/"
-	requestBody := ChatGPTRequestImageBody{
+	requestBody := ImageRequestBody{
 		Prompt: msg,
 		N:      1,
 		Size:   "1024x1024",
 	}
-	requestData, err := json.Marshal(requestBody)
+	requestData, _ := json.Marshal(requestBody)
 
+	req, err := http.NewRequest("POST", "https://api.openai.com/v1/images/generations", bytes.NewBuffer(requestData))
 	if err != nil {
 		return "", err
 	}
-	log.Printf("request gtp json string : %v", string(requestData))
-	req, err := http.NewRequest("POST", CompletionsPngURL+"generations", bytes.NewBuffer(requestData))
-	if err != nil {
-		return "", err
-	}
-	apiKey := config.Config.ApiKey
+
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Authorization", "Bearer "+config.Config.ApiKey)
+
 	client := &http.Client{}
 	response, err := client.Do(req)
-	fmt.Println(response)
 	if err != nil {
 		return "", err
 	}
-	defer response.Body.Close()
-	if response.StatusCode != 200 {
-		return "", errors.New(fmt.Sprintf("gtp api status code not equals 200,code is %d", response.StatusCode))
-	}
+
+	defer func() {
+		_ = response.Body.Close()
+	}()
+
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
 		return "", err
 	}
-	gptResponseBody := &ChatGPTResponseImageBody{}
-	log.Println("收到image图片响应----" + string(body))
-	err = json.Unmarshal(body, gptResponseBody)
-	if err != nil {
-		return "", err
+
+	if response.StatusCode != 200 {
+		fmt.Println(body)
+		return "", errors.New(fmt.Sprintf("Image 响应状态码异常: %d", response.StatusCode))
 	}
-	imageName := md5V2(msg) + ".jpg"
+
+	gptResponseBody := &ImageResponseBody{}
+	_ = json.Unmarshal(body, gptResponseBody)
+
+	imageName := uuid.New().String() + ".jpg"
 	imagePath := downPath + "/" + imageName
 	if len(gptResponseBody.Data) > 0 {
 		for _, imageUrl := range gptResponseBody.Data {
-			err := downLoadImage(imagePath, imageUrl.Url)
-			if err != nil {
-				log.Println("Download pic file failed!", err)
-			} else {
-				log.Println("Download file success.")
+			if err = downLoadImage(imagePath, imageUrl.Url); err != nil {
+				return "", err
 			}
+			break
 		}
 	}
-	log.Printf("gpt response image path: %s \n", downPath)
-
 	return imagePath, nil
-}
-
-func md5V2(str string) string {
-	timeStr := time.Now().Format("2006-01-02 15:04:05")
-	data := []byte(str + timeStr)
-	has := md5.Sum(data)
-	md5str := fmt.Sprintf("%x", has)
-	return md5str
 }
 
 // 下载图片信息
 func downLoadImage(base string, url string) error {
 
-	log.Printf("开始下载图片 %s 到本地 %s：", url, base)
-	v, err := http.Get(url)
+	log.Printf("开始下载图片 %s 到本地 %s\n", url, base)
+	res, err := http.Get(url)
 	if err != nil {
-		log.Printf("Http get [%v] failed! %v \n", url, err)
-		return err
+		return errors.New(fmt.Sprintf("下载图片时 Get 函数错误: %v", err))
 	}
-	defer v.Body.Close()
-	content, err := ioutil.ReadAll(v.Body)
+
+	defer func() {
+		_ = res.Body.Close()
+	}()
+
+	content, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		log.Printf("Read http response failed! %v \n", err)
-		return err
+		return errors.New(fmt.Sprintf("下载图片时 Get 函数错误: %v", err))
 	}
+
 	err = ioutil.WriteFile(base, content, 0666)
 	if err != nil {
-		log.Printf("Save to file failed! %v \n", err)
-		return err
+		return errors.New(fmt.Sprintf("下载图片时 Get 函数错误: %v", err))
 	}
 	return nil
 }

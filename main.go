@@ -14,14 +14,19 @@ func main() {
 }
 
 const (
-	ChatGPT = "chatGPT"
-	OpenAi  = "openai"
-	Image   = "image"
+	ChatGPT           = "chatGPT"
+	OpenAi            = "openai"
+	Image             = "image"
+	ImageDownloadPath = "images"
 )
 
 var (
 	Model = ChatGPT
 )
+
+func init() {
+	_ = os.MkdirAll(ImageDownloadPath, 0700)
+}
 
 // startBot 登录微信
 func startBot() {
@@ -139,8 +144,7 @@ func groupMessage(msg *openwechat.Message) {
 			log.Printf("OpenAi 回复用户失败: %v \n", err)
 		}
 	} else if Model == Image {
-		reply := chatgpt.GetDALLImage(replaceMessage, "images")
-		log.Printf("微信读取文件路径：%s", reply)
+		reply := chatgpt.GetDALLImage(replaceMessage, ImageDownloadPath)
 		if err = replayUserImage(msg, reply); err != nil {
 			log.Printf("Image 回复用户失败: %s \n", err)
 		}
