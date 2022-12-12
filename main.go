@@ -134,12 +134,12 @@ func groupMessage(msg *openwechat.Message) {
 			log.Printf("ChatGPT 回复用户失败: %s \n", err)
 		}
 	} else if Model == OpenAi {
-		reply := chatgpt.GetDavinciMessage(replaceMessage)
+		reply := chatgpt.GetOpenAiMessage(replaceMessage)
 		if err = replayUserText(msg, reply); err != nil {
 			log.Printf("OpenAi 回复用户失败: %v \n", err)
 		}
 	} else if Model == Image {
-		reply := chatgpt.GetDALLImage(replaceMessage, chatgpt.DownLoadPath)
+		reply := chatgpt.GetDALLImage(replaceMessage, "images")
 		log.Printf("微信读取文件路径：%s", reply)
 		if err = replayUserImage(msg, reply); err != nil {
 			log.Printf("Image 回复用户失败: %s \n", err)

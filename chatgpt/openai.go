@@ -9,7 +9,7 @@ import (
 	"net/http"
 )
 
-type DavinciRequestBody struct {
+type OpenAiRequestBody struct {
 	Model            string  `json:"model"`
 	Prompt           string  `json:"prompt"`
 	MaxTokens        int     `json:"max_tokens"`
@@ -19,8 +19,7 @@ type DavinciRequestBody struct {
 	PresencePenalty  int     `json:"presence_penalty"`
 }
 
-// DavinciResponseBody 响应体
-type DavinciResponseBody struct {
+type OpenAiResponseBody struct {
 	ID      string                 `json:"id"`
 	Object  string                 `json:"object"`
 	Created int                    `json:"created"`
@@ -36,8 +35,8 @@ type ChoiceItem struct {
 	FinishReason string `json:"finish_reason"`
 }
 
-func GetDavinciMessage(requestText string) string {
-	requestBody := DavinciRequestBody{
+func GetOpenAiMessage(requestText string) string {
+	requestBody := OpenAiRequestBody{
 		Model:            "text-davinci-003",
 		Prompt:           requestText,
 		MaxTokens:        2048,
@@ -46,43 +45,51 @@ func GetDavinciMessage(requestText string) string {
 		FrequencyPenalty: 0,
 		PresencePenalty:  0,
 	}
-	requestData, err := json.Marshal(requestBody)
-	if err != nil {
-		return "GetDavinciMessage 解析异常"
-	}
+	requestData, _ := json.Marshal(requestBody)
+
 	req, err := http.NewRequest("POST", "https://api.openai.com/v1/completions", bytes.NewBuffer(requestData))
 	if err != nil {
-		return "GetDavinciMessage 请求异常"
+		log.Println("GetOpenAiMessage 的 NewRequest 异常:", err)
+		return "服务器异常, 请稍后再试"
 	}
 
-	apiKey := config.Config.ApiKey
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Authorization", "Bearer "+config.Config.ApiKey)
+
 	client := &http.Client{}
 	response, err := client.Do(req)
 	if err != nil {
-		return "GetDavinciMessage http 请求异常"
-	}
-	defer response.Body.Close()
-	if response.StatusCode != 200 {
-		return "GetDavinciMessage http 请求状态码异常"
-	}
-	body, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return "GetDavinciMessage body IO读取异常"
+		log.Println("GetOpenAiMessage 调用接口异常:", err)
+		return "服务器异常, 请稍后再试"
 	}
 
-	gptResponseBody := &DavinciResponseBody{}
-	log.Println(string(body))
+	defer func() {
+		_ = response.Body.Close()
+	}()
+
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		log.Println("GetOpenAiMessage 读取响应数据异常:", err)
+		return "服务器异常, 请稍后再试"
+	}
+
+	if response.StatusCode != 200 {
+		log.Println("GetOpenAiMessage 响应状态码异常:", response.StatusCode)
+		log.Println(string(body))
+		return "服务器异常, 请稍后再试"
+	}
+
+	gptResponseBody := &OpenAiResponseBody{}
 	err = json.Unmarshal(body, gptResponseBody)
 	if err != nil {
-		return "body解析异常"
+		log.Println("GetOpenAiMessage 解析响应体异常:", err)
+		log.Println(string(body))
+		return "服务器异常, 请稍后再试"
 	}
 
 	var reply string
 	if len(gptResponseBody.Choices) > 0 {
 		reply = gptResponseBody.Choices[0].Text
 	}
-	log.Printf("gpt response text: %s \n", reply)
 	return reply
 }
