@@ -1,3 +1,6 @@
 .idea
 *.iml
 /bin
+config.json
+User_Agent
+cookie
