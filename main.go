@@ -2,16 +2,24 @@ package main
 
 import (
 	"ChatGPT_to_WechatBot/chatgpt"
+	"ChatGPT_to_WechatBot/config"
 	"fmt"
 	"github.com/eatmoreapple/openwechat"
 	"log"
 	"os"
 	"strings"
+	"time"
 )
 
 func main() {
 	startBot()
 }
+
+const (
+	DAVINCI = "davinci"
+	IMAGE   = "image"
+	OPENAI  = "openai"
+)
 
 // startBot 登录微信
 func startBot() {
@@ -75,16 +83,88 @@ func groupMessage(msg *openwechat.Message) {
 	if replaceMessage == "" {
 		return
 	}
-
-	// 获取 ChatGPT 消息
-	chatGptMessage := chatgpt.GetChatGptMessage(replaceMessage, msg.FromUserName+":"+groupSender.NickName)
-
-	// 回复消息
-	atText = "@" + groupSender.NickName
-	replyText := atText + " ChatGPT回复: \n" + chatGptMessage
-	_, err = msg.ReplyText(replyText)
-	if err != nil {
-		log.Println("发送群消息失败:", err)
+	// 获取@我的用户
+	groupSender, _ = msg.SenderInGroup()
+	// 判断模型切换
+	reply := ""
+	switch {
+	case strings.Contains(replaceMessage, "达芬奇") && groupSender.NickName == config.Config.Master:
+		chatgpt.Flag = DAVINCI
+		reply = "切换成功，当前模型为 davinci，我可以获取当下的讯息。\n"
+		log.Println("切换成功，当前模型为 davinci")
+		err = replayUserText(msg, reply)
+		if err != nil {
+			log.Printf("回复用户失败，%s", err)
+		}
+	case strings.Contains(replaceMessage, "openai") && groupSender.NickName == config.Config.Master:
+		chatgpt.Flag = OPENAI
+		reply = "切换成功，当前模型为 chatGPT，我们可以使用对话的方式进行交互。\n"
+		log.Println("切换成功，当前模型为 chatGPT")
+		// 回复@我的用户
+		err = replayUserText(msg, reply)
+		if err != nil {
+			log.Printf("回复用户失败，%s", err)
+		}
+	case strings.Contains(replaceMessage, "生成图像") && groupSender.NickName == config.Config.Master:
+		chatgpt.Flag = IMAGE
+		reply = "切换成功，当前模型为 DALL-E，我是一个可以通过文本描述中生成图像的人工智能程序。\n"
+		log.Println("切换成功，当前模型为 DALL-E")
+		err = replayUserText(msg, reply)
+		if err != nil {
+			log.Printf("回复用户失败，%s", err)
+		}
+	case replaceMessage == "查看模型":
+		reply = "模型1：chatGPT，可以使用对话的方式进行交互。\n模型2：DAVINCI，可以使用对话的方式进行交互。\n模型3：DALL-E，可以通过文本描述中生成图像。\n"
+		err = replayUserText(msg, reply)
+		if err != nil {
+			log.Printf("回复用户失败，%s", err)
+		}
+	case replaceMessage == "当前模型":
+		switch {
+		case chatgpt.Flag == OPENAI:
+			reply = "当前模型为 chatGPT"
+			log.Println("查询模型，当前模型为 chatGPT")
+			err = replayUserText(msg, reply)
+			if err != nil {
+				log.Printf("回复用户失败，%s", err)
+			}
+		case chatgpt.Flag == IMAGE:
+			reply = "当前模型为 DALL-E"
+			log.Println("查询模型，当前模型为 chatGPT")
+			err = replayUserText(msg, reply)
+			if err != nil {
+				log.Printf("回复用户失败，%s", err)
+			}
+		case chatgpt.Flag == DAVINCI:
+			reply = "当前模型为 davinci"
+			log.Println("查询模型，当前模型为 davinci")
+			err = replayUserText(msg, reply)
+			if err != nil {
+				log.Printf("回复用户失败，%s", err)
+			}
+		}
+	}
+	// 发送逻辑
+	switch {
+	case chatgpt.Flag == OPENAI:
+		reply = chatgpt.GetChatGptMessage(replaceMessage, msg.FromUserName+":"+groupSender.NickName)
+		err = replayUserText(msg, reply)
+		if err != nil {
+			log.Printf("OPENAI 回复用户失败: %s \n", err)
+		}
+	case chatgpt.Flag == IMAGE:
+		reply = chatgpt.GetDALLImage(replaceMessage, chatgpt.DownLoadPath)
+		log.Printf("微信读取文件路径：%s", reply)
+		err := replayUserImage(msg, reply)
+		if err != nil {
+			log.Printf("回复图片异常，error %s", err)
+		}
+	case chatgpt.Flag == DAVINCI:
+		reply = chatgpt.GetDavinciMessage(replaceMessage)
+		err := replayUserText(msg, reply)
+		if err != nil {
+			log.Printf("DAVINCI response group error: %v \n", err)
+		}
 	}
 }
 
@@ -116,4 +196,30 @@ func exit() {
 	log.Println("请输入任意字符退出程序")
 	_, _ = os.Stdin.Read([]byte{0})
 	os.Exit(0)
+}
+
+// replayUserText 回复用户文字
+func replayUserText(msg *openwechat.Message, reply string) error {
+	reply = strings.TrimSpace(reply)
+	reply = strings.Trim(reply, "\n")
+	groupSender, _ := msg.SenderInGroup()
+	atText := "@" + groupSender.NickName
+	replyText := atText + "chatGPT回复：\n" + reply
+	_, err := msg.ReplyText(replyText)
+	if err != nil {
+		log.Printf("发送群消息失败: %v \n", err)
+	}
+	return err
+}
+
+// replayUserImage 回复用户图片
+func replayUserImage(msg *openwechat.Message, imagePath string) error {
+	file, _ := os.Open(imagePath)
+	fmt.Println("回复图片读取的路径为", imagePath)
+	time.Sleep(time.Second * 1)
+	_, err := msg.ReplyImage(file)
+	if err != nil {
+		log.Printf("response group error: %v \n", err)
+	}
+	return err
 }
