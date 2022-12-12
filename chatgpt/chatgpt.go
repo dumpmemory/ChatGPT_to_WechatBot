@@ -60,6 +60,9 @@ func GetChatGptMessage(requestText string, openId string) string {
 			DefaultGPT = newChatGPT()
 		}
 	}
+	if DefaultGPT == nil {
+		return "服务器异常, 请稍后再试"
+	}
 
 	fmt.Println("向 ChatGPT 发送:", requestText)
 	chatGptMessage := DefaultGPT.SendMsg(requestText, openId)
