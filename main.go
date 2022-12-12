@@ -21,11 +21,16 @@ const (
 )
 
 var (
-	Model = ChatGPT
+	Model string
 )
 
 func init() {
 	_ = os.MkdirAll(ImageDownloadPath, 0700)
+	if config.Config.JudgeChatGPT {
+		Model = ChatGPT
+	} else {
+		Model = OpenAi
+	}
 }
 
 // startBot 登录微信
@@ -96,19 +101,19 @@ func groupMessage(msg *openwechat.Message) {
 		lowerMessage := strings.ToLower(replaceMessage)
 		if strings.Contains(lowerMessage, "chatgpt") {
 			Model = ChatGPT
-			if err = replayUserText(msg, "\"切换成功，当前模型为 ChatGPT，我们可以使用对话的方式进行交互。\\n\""); err != nil {
+			if err = replayUserText(msg, "切换成功，当前模型为 ChatGPT, 我们可以使用对话的方式进行交互."); err != nil {
 				log.Printf("回复用户失败，%s", err)
 			}
 			return
 		} else if strings.Contains(lowerMessage, "openai") {
 			Model = OpenAi
-			if err = replayUserText(msg, "切换成功，当前模型为 OpenAi，我可以获取当下的讯息。\n"); err != nil {
+			if err = replayUserText(msg, "切换成功, 当前模型为 OpenAi, 我可以获取当下的讯息."); err != nil {
 				log.Printf("回复用户失败，%s", err)
 			}
 			return
 		} else if strings.Contains(replaceMessage, "生成图像") {
 			Model = Image
-			if err = replayUserText(msg, "切换成功，当前模型为 Image，我是一个可以通过文本描述中生成图像的人工智能程序。\n"); err != nil {
+			if err = replayUserText(msg, "切换成功, 当前模型为 Image, 我是一个可以通过文本描述中生成图像的人工智能程序."); err != nil {
 				log.Printf("回复用户失败，%s", err)
 			}
 			return

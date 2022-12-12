@@ -201,7 +201,8 @@ func (c *ChatGPT) updateSessionToken() bool {
 		log.Println("更新 Token 解析响应数据失败", err)
 		if !DefaultGPTSuccess1 {
 			DefaultGPTSuccess1 = true
-			println("大概率是ip问题, 请重点检查ip")
+			println("大概率是 ip 问题, 请重点检查ip")
+			println("或者是 User_Agent 的问题")
 		} else {
 			println("可能是" + CfClearanceName + "获取了")
 		}
@@ -234,7 +235,7 @@ func (c *ChatGPT) SendMsg(msg, openId string) string {
 	} else {
 		log.Printf("用户 %s 继续对话\n", openId)
 	}
-	info.ttl = time.Now().Add(5 * time.Minute)
+	info.ttl = time.Now().Add(10 * time.Minute)
 
 	// 发送请求
 	req, err := http.NewRequest("POST", "https://chat.openai.com/backend-api/conversation", CreateChatGPTRequestBody(msg, info.parentID, info.conversationId))

@@ -28,7 +28,7 @@ type ImageURLItem struct {
 }
 
 func GetDALLImage(requestText string, downLoadPath string) string {
-	fmt.Println("向 Image 发送:", requestText)
+	log.Println("向 Image 发送:", requestText)
 
 	imagePath, err := CompletionsImage(requestText, downLoadPath)
 	if err != nil {
@@ -72,7 +72,7 @@ func CompletionsImage(msg string, downPath string) (string, error) {
 	}
 
 	if response.StatusCode != 200 {
-		fmt.Println(body)
+		log.Println(body)
 		return "", errors.New(fmt.Sprintf("Image 响应状态码异常: %d", response.StatusCode))
 	}
 
@@ -94,7 +94,6 @@ func CompletionsImage(msg string, downPath string) (string, error) {
 
 // 下载图片信息
 func downLoadImage(base string, url string) error {
-
 	log.Printf("开始下载图片 %s 到本地 %s\n", url, base)
 	res, err := http.Get(url)
 	if err != nil {
