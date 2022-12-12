@@ -12,6 +12,8 @@ type Configuration struct {
 	ApiKey string `json:"api_key"`
 	// 微信名称
 	Master string `json:"master"`
+	// 启动时是否判断ChatGPT是否可用
+	JudgeChatGPT bool `json:"judge_chatgpt"`
 }
 
 var Config *Configuration

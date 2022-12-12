@@ -128,7 +128,6 @@ func groupMessage(msg *openwechat.Message) {
 	}
 
 	// 发送逻辑
-
 	if Model == ChatGPT {
 		reply := chatgpt.GetChatGptMessage(replaceMessage, msg.FromUserName+":"+groupSender.NickName)
 		if err = replayUserText(msg, reply); err != nil {

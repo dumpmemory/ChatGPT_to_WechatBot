@@ -15,118 +15,17 @@ import (
 	"time"
 )
 
-const BASEURL = "https://api.openai.com/v1/"
-
-func GetChatGptMessage(requestText string, openId string) string {
-	if DefaultGPT == nil {
-		DefaultGPT = newChatGPT()
-	}
-	fmt.Println("向 ChatGPT 发送:", requestText)
-	chatGptMessage := DefaultGPT.SendMsg(requestText, openId)
-	chatGptMessage = strings.TrimSpace(chatGptMessage)
-	chatGptMessage = strings.Trim(chatGptMessage, "\n")
-	return chatGptMessage
-}
-
-func GetDALLImage(requestText string, downLoadPath string) string {
-	fmt.Println("向 DALL-E 发送:", requestText)
-	imagePath, err := CompletionsImage(requestText, downLoadPath)
-	if err != nil {
-		log.Printf("下载图片失败 %s", err)
-		return "下载图片失败"
-	}
-	log.Printf("微信读取文件路径：%s", imagePath)
-	return imagePath
-}
-
-func GetDavinciMessage(requestText string) string {
-	requestBody := DavinciRequestBody{
-		Model:            "text-davinci-003",
-		Prompt:           requestText,
-		MaxTokens:        2048,
-		Temperature:      0.7,
-		TopP:             1,
-		FrequencyPenalty: 0,
-		PresencePenalty:  0,
-	}
-	requestData, err := json.Marshal(requestBody)
-	if err != nil {
-		return "GetDavinciMessage 解析异常"
-	}
-	req, err := http.NewRequest("POST", BASEURL+"completions", bytes.NewBuffer(requestData))
-	if err != nil {
-		return "GetDavinciMessage 请求异常"
-	}
-
-	apiKey := config.Config.ApiKey
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	client := &http.Client{}
-	response, err := client.Do(req)
-	if err != nil {
-		return "GetDavinciMessage http 请求异常"
-	}
-	defer response.Body.Close()
-	if response.StatusCode != 200 {
-		return "GetDavinciMessage http 请求状态码异常"
-	}
-	body, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return "GetDavinciMessage body IO读取异常"
-	}
-
-	gptResponseBody := &DavinciResponseBody{}
-	log.Println(string(body))
-	err = json.Unmarshal(body, gptResponseBody)
-	if err != nil {
-		return "body解析异常"
-	}
-
-	var reply string
-	if len(gptResponseBody.Choices) > 0 {
-		reply = gptResponseBody.Choices[0].Text
-	}
-	log.Printf("gpt response text: %s \n", reply)
-	return reply
-}
-
 var (
 	cookiesFileName             = "cookie"
 	User_AgentFileName          = "User_Agent"
 	SessionTokenName            = "__Secure-next-auth.session-token"
 	CfClearanceName             = "cf_clearance"
-	DownLoadPath                = "images"
 	DefaultGPT         *ChatGPT = nil
+	DefaultGPTLock              = sync.Mutex{}
+	DefaultGPTSuccess1          = false // 用来判断是否成功过
 	userInfoMap                 = make(map[string]*userInfo)
 	lock                        = sync.Mutex{}
 )
-
-type DavinciRequestBody struct {
-	Model            string  `json:"model"`
-	Prompt           string  `json:"prompt"`
-	MaxTokens        int     `json:"max_tokens"`
-	Temperature      float32 `json:"temperature"`
-	TopP             int     `json:"top_p"`
-	FrequencyPenalty int     `json:"frequency_penalty"`
-	PresencePenalty  int     `json:"presence_penalty"`
-}
-
-// DavinciResponseBody 响应体
-type DavinciResponseBody struct {
-	ID      string                 `json:"id"`
-	Object  string                 `json:"object"`
-	Created int                    `json:"created"`
-	Model   string                 `json:"model"`
-	Choices []ChoiceItem           `json:"choices"`
-	Usage   map[string]interface{} `json:"usage"`
-}
-
-type ChoiceItem struct {
-	Text         string `json:"text"`
-	Index        int    `json:"index"`
-	Logprobs     int    `json:"logprobs"`
-	FinishReason string `json:"finish_reason"`
-}
 
 type ChatGPT struct {
 	ok            bool
@@ -143,15 +42,41 @@ type userInfo struct {
 	ttl            time.Time
 }
 
+func init() {
+	if config.Config.JudgeChatGPT {
+		DefaultGPT = newChatGPT()
+		if DefaultGPT == nil {
+			exit()
+		}
+	}
+}
+
+func GetChatGptMessage(requestText string, openId string) string {
+	// 单例
+	if DefaultGPT == nil {
+		DefaultGPTLock.Lock()
+		defer DefaultGPTLock.Unlock()
+		if DefaultGPT == nil {
+			DefaultGPT = newChatGPT()
+		}
+	}
+
+	fmt.Println("向 ChatGPT 发送:", requestText)
+	chatGptMessage := DefaultGPT.SendMsg(requestText, openId)
+	chatGptMessage = strings.TrimSpace(chatGptMessage)
+	chatGptMessage = strings.Trim(chatGptMessage, "\n")
+	return chatGptMessage
+}
+
 func newChatGPT() *ChatGPT {
 	cookies, err := os.ReadFile(cookiesFileName)
 	if err != nil {
 		log.Println("读取", cookiesFileName, "文件失败:", err)
-		exit()
+		return nil
 	}
 	if len(cookies) < 100 {
 		log.Println("你应该忘了配置", cookiesFileName, "文件")
-		exit()
+		return nil
 	}
 
 	// 解析一下 sessionToken
@@ -166,7 +91,7 @@ func newChatGPT() *ChatGPT {
 		}
 	} else {
 		log.Println("在 cookies 中没有查询到", SessionTokenName)
-		exit()
+		return nil
 	}
 
 	// 解析一下 cf_clearance
@@ -182,14 +107,14 @@ func newChatGPT() *ChatGPT {
 		}
 	} else {
 		log.Println("在 cookies 中没有查询到", CfClearanceName)
-		exit()
+		return nil
 	}
 
 	// 获取一下 User-Agent
 	User_AgentBytes, err := os.ReadFile(User_AgentFileName)
 	if err != nil {
 		log.Println("读取", User_AgentFileName, "文件失败:", err)
-		exit()
+		return nil
 	}
 
 	User_Agent := string(User_AgentBytes)
@@ -199,7 +124,7 @@ func newChatGPT() *ChatGPT {
 	}
 	if len(User_Agent) == 0 {
 		log.Println("你应该忘了配置", User_AgentFileName, "文件")
-		exit()
+		return nil
 	}
 	log.Println("User_Agent:", User_Agent)
 
@@ -210,7 +135,7 @@ func newChatGPT() *ChatGPT {
 		timeOut:      time.Now().Add(2 * time.Hour),
 	}
 	if !gpt.updateSessionToken() {
-		exit()
+		return nil
 	}
 
 	// 每 10 分钟更新一次 sessionToken
@@ -273,7 +198,13 @@ func (c *ChatGPT) updateSessionToken() bool {
 	}
 	err = json.Unmarshal(bodyByes, &accessToken)
 	if err != nil {
-		log.Println("更新 Token 解析响应数据失败(可能是需要更新", CfClearanceName, "):", err)
+		log.Println("更新 Token 解析响应数据失败", err)
+		if !DefaultGPTSuccess1 {
+			DefaultGPTSuccess1 = true
+			println("大概率是ip问题, 请重点检查ip")
+		} else {
+			println("可能是" + CfClearanceName + "获取了")
+		}
 		//log.Println("解析响应数据:", string(bodyByes))
 		return false
 	}
